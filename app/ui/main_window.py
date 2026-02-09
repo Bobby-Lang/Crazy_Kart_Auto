@@ -66,12 +66,17 @@ class FlowWorker(QThread):
             redirector = LogRedirector(self.log_signal)
             sys.stdout = redirector
             
+            self.progress_signal.emit(10, "正在启动游戏...")
             self.flow = AutoGameStateMachine(self.cfg_mgr)
+            
+            self.progress_signal.emit(20, "游戏启动完成，开始运行...")
             result = self.flow.execute_full_flow()
             
+            self.progress_signal.emit(100, "任务完成")
             self.finished_signal.emit(result)
         except Exception as e:
             self.log_signal.emit(f"[错误] 流程异常: {str(e)}")
+            self.progress_signal.emit(0, f"运行错误: {str(e)}")
             self.finished_signal.emit(False)
         finally:
             sys.stdout = sys.__stdout__
@@ -446,8 +451,16 @@ class MainWindow(QMainWindow):
                     item_target = self.item_target_spin.value()
                     speed_target = self.speed_target_spin.value()
                     
+                    # 更新UI
                     self.mode_item_count.setText(f"{item_done} / {item_target}")
                     self.mode_speed_count.setText(f"{speed_done} / {speed_target}")
+                    
+                    # 调试日志（每10次刷新输出一次，避免日志过多）
+                    if not hasattr(self, '_stats_refresh_count'):
+                        self._stats_refresh_count = 0
+                    self._stats_refresh_count += 1
+                    if self._stats_refresh_count % 10 == 0:
+                        self.append_log(f"[调试] 统计刷新 - 道具赛: {item_done}/{item_target}, 疾爽赛: {speed_done}/{speed_target}")
             else:
                 # 如果没有状态文件，显示 0 / 目标值
                 self.mode_item_count.setText(f"0 / {self.item_target_spin.value()}")
@@ -460,6 +473,7 @@ class MainWindow(QMainWindow):
         self.stats_timer = QTimer(self)
         self.stats_timer.timeout.connect(self.load_stats)
         self.stats_timer.start(2000)  # 每2秒刷新一次统计
+        self.append_log("[系统] 统计定时器已启动 (每2秒刷新)")
 
     def start_task(self):
         """开始任务"""
@@ -480,6 +494,7 @@ class MainWindow(QMainWindow):
         self.flow_worker = FlowWorker(self.cfg_mgr)
         self.flow_worker.log_signal.connect(self.append_log)
         self.flow_worker.finished_signal.connect(self.on_task_finished)
+        self.flow_worker.progress_signal.connect(self.update_progress)
         self.flow_worker.start()
         
         self.append_log("="*50)
@@ -505,6 +520,14 @@ class MainWindow(QMainWindow):
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.progress_bar.setValue(100 if success else 0)
+        self.load_stats()
+        
+    def update_progress(self, progress, message):
+        """更新进度条"""
+        self.progress_bar.setValue(progress)
+        if message:
+            self.status_bar.showMessage(message)
+        # 同时刷新统计
         self.load_stats()
         
     def reset_progress(self):
