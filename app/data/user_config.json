@@ -1,0 +1,67 @@
+{
+    "paths": {
+        "game_path": "D:\\CrazyKart\\CrazyKart\\CrazyKart.exe",
+        "box_path": "D:\\DataBase\\game\\auto_game\\app\\2Box.exe"
+    },
+    "resolution": {
+        "width": 1920,
+        "height": 1080,
+        "options": [
+            {
+                "width": 1920,
+                "height": 1080,
+                "name": "1080p (1920x1080)"
+            },
+            {
+                "width": 1280,
+                "height": 720,
+                "name": "720p (1280x720)"
+            }
+        ]
+    },
+    "room_password": "9527",
+    "//": "=== 新增配置结束 ===",
+    "mode_control": {
+        "tasks": [
+            {
+                "id": "mode_item",
+                "target": 5
+            },
+            {
+                "id": "mode_speed",
+                "target": 25
+            }
+        ]
+    },
+    "daily_tasks": {
+        "mode_item": {
+            "enabled": true,
+            "target_games": 5
+        },
+        "mode_speed": {
+            "enabled": true,
+            "target_games": 25
+        }
+    },
+    "extra_features": {
+        "auto_checkin": false,
+        "auto_claim_tasks": false
+    },
+    "post_task": {
+        "close_game": false,
+        "shutdown": false
+    },
+    "window_monitor": {
+        "enabled": true,
+        "check_interval": 10,
+        "auto_recovery": true
+    },
+    "recovery_config": {
+        "force_close": true,
+        "close_timeout": 5,
+        "restart_timeout": 90,
+        "retry_count": 1,
+        "game_end_check_interval": 5,
+        "max_wait_time": 600
+    }
+}

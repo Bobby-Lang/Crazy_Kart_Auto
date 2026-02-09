@@ -1,0 +1,386 @@
+# -*- coding: utf-8 -*-
+import time
+import json
+import os
+import win32con
+import win32api
+import threading
+import re
+
+from app.modules.room_in_module import RoomModule
+from app.modules.module_switcher import ModeSwitcher
+from app.modules.emergency_module import EmergencyModule
+from app.modules.task_module import TaskModule
+
+# 增加全局剪贴板锁，防止多窗口竞争
+clipboard_lock = threading.Lock()
+
+class WindowState:
+    LOGIN = "LOGIN"
+    LOBBY = "LOBBY"
+    ROOM = "ROOM"
+    RACING = "RACING"
+    UNKNOWN = "UNKNOWN"
+    FINISHED = "FINISHED"
+
+
+class TaskController:
+    def __init__(self, combined_hwnd_list, config_manager, engine):
+        self.windows = combined_hwnd_list
+        self.cfg_mgr = config_manager
+        self.engine = engine
+        
+        # 模块初始化
+        self.room_mod = RoomModule(config_manager, self.engine)
+        self.switcher = ModeSwitcher(config_manager, self.engine)
+        self.emergency_mod = EmergencyModule(config_manager, self.engine)
+        self.task_mod = TaskModule(config_manager, self.engine)
+
+        self.running = True
+        self.active = True
+        self.win_states = {}
+        self.action_cd = {}
+        self.last_log = {}
+        self.last_visual_check = {} # 记录上次高耗能OCR/模板匹配时间
+
+        self.mode_switching = {hwnd: False for _, hwnd, _ in self.windows}
+        self.pause_key_str = self.cfg_mgr.get_config("pause_hotkey", "f9")
+        self.stop_key_str = self.cfg_mgr.get_config("stop_hotkey", "f10")
+        self.final_tasks_done = {hwnd: False for _, hwnd, _ in self.windows}
+
+        self._cleanup_session()
+        self._init_window_states()
+        self._start_hotkey_listener()
+
+        print("✅ 调度中心已就绪 | 强化版 FSM 逻辑已加载")
+
+    def _cleanup_session(self):
+        p = self.cfg_mgr.get_path("room_session")
+        if os.path.exists(p):
+            try: os.remove(p)
+            except: pass
+
+    def _get_vk_code(self, key_str):
+        ks = str(key_str).lower().strip()
+        vk_map = {"space": win32con.VK_SPACE, "enter": win32con.VK_RETURN, "f9": win32con.VK_F9, "f10": win32con.VK_F10}
+        if ks in vk_map: return vk_map[ks]
+        if ks.startswith("f"):
+            try: return getattr(win32con, f"VK_F{ks[1:]}")
+            except: pass
+        return win32con.VK_F9
+
+    def _start_hotkey_listener(self):
+        def listener():
+            p_vk = self._get_vk_code(self.pause_key_str)
+            s_vk = self._get_vk_code(self.stop_key_str)
+            last_p = False
+            while self.running:
+                p_down = win32api.GetAsyncKeyState(p_vk) & 0x8000
+                if p_down and not last_p:
+                    self.active = not self.active
+                    print(f"\n[系统] {'▶️ 恢复运行' if self.active else '⏸️ 脚本暂停'}")
+                last_p = bool(p_down)
+                if win32api.GetAsyncKeyState(s_vk) & 0x8000:
+                    print("\n[系统] 强制退出...")
+                    self._cleanup_session()
+                    os._exit(0)
+                time.sleep(0.05)
+        threading.Thread(target=listener, daemon=True).start()
+
+    def _init_window_states(self):
+        self.leader_idx = self.cfg_mgr.get_config("roles.host_index", 0)
+        for idx, hwnd, acc in self.windows:
+            self.win_states[hwnd] = {
+                "index": idx,
+                "account": acc,
+                "role": "unknown",
+                "state": WindowState.UNKNOWN,
+                "locked": False,
+                "login_step_idx": 0,
+                "ready_confirm_count": 0,
+                "race_start_time": 0,
+            }
+
+    def _log(self, hwnd, msg):
+        data = self.win_states[hwnd]
+        full = f"窗口 {data['index']}({data['role']}): {msg}"
+        if self.last_log.get(hwnd) != full:
+            print(full); self.last_log[hwnd] = full
+
+    def _get_global_context(self):
+        session = self._load_session_file()
+        ctx = {
+            "sid": session.get("room_id"),
+            "host_h": None,
+            "members_ready": [],
+            "members_in_room": [],
+            "total": len(self.windows),
+        }
+        
+        now = time.time()
+        for _, hwnd, _ in self.windows:
+            data = self.win_states[hwnd]
+            
+            # 性能优化：降低视觉判定频率 (0.8秒内不重复扫描)
+            if now - self.last_visual_check.get(hwnd, 0) < 0.8:
+                # 即使不扫描，也要填充 ctx 的基础信息
+                if data["role"] == "host": ctx["host_h"] = hwnd
+                if data["state"] == WindowState.ROOM:
+                    ctx["members_in_room"].append(hwnd)
+                    # 此处假设 ready 状态短时间内不变，或者跳过
+                continue
+            
+            self.last_visual_check[hwnd] = now
+            
+            is_host = self.room_mod.has_start_button(hwnd)
+            data["role"] = "host" if is_host else "member"
+
+            if is_host:
+                ctx["host_h"] = hwnd
+                if self.room_mod.is_in_room(hwnd):
+                    # 关键逻辑：如果刚才在比赛中，现在回到了房间，说明一局结束
+                    if data["state"] == WindowState.RACING:
+                        self._log(hwnd, "🏆 检测到比赛结束，上报进度")
+                        self.switcher.report_game_finished()
+                    data["state"] = WindowState.ROOM
+                else:
+                    # 房主不在房间，可能在大厅或比赛中
+                    pass 
+            else:
+                if self.room_mod.is_in_room(hwnd):
+                    data["state"] = WindowState.ROOM
+                    ctx["members_in_room"].append(hwnd)
+                    if self.room_mod.is_member_ready(hwnd):
+                        ctx["members_ready"].append(hwnd)
+                elif self.room_mod.is_in_lobby(hwnd):
+                    data["state"] = WindowState.LOBBY
+                elif data["state"] == WindowState.ROOM:
+                    # 从房间突然不见了，判定进入比赛
+                    data["state"] = WindowState.RACING
+                    data["race_start_time"] = now
+                else:
+                    data["state"] = WindowState.LOGIN
+                    
+        return ctx
+
+    def start_monitor(self):
+        print("🚀 主监控循环已启动...")
+        loop_count = 0        
+        while self.running:
+            if not self.active:
+                time.sleep(1.0); continue
+            try:
+                ctx = self._get_global_context()
+                # --- 【新增调试代码】每 3 秒打印一次当前判定状态 ---
+                if loop_count % 6 == 0:  # 0.5s * 6 = 3秒
+                    states = [f"{self.win_states[h]['index']}:{self.win_states[h]['state']}" for _, h, _ in self.windows]
+                    print(f"[调试] 运行中... 窗口状态判定: {states}")
+                # -----------------------------------------------                
+                for _, hwnd, _ in self.windows:
+                    if not self.win_states[hwnd]["locked"]:
+                        if self.emergency_mod.check_and_handle(hwnd):
+                            continue
+                        self._process_fsm(hwnd, ctx)
+            except Exception as e:
+                print(f"⚠️ 逻辑异常: {e}")
+            time.sleep(0.4)
+
+    def _process_fsm(self, hwnd, ctx):
+        data = self.win_states[hwnd]
+        s = data["state"]
+        if s == WindowState.LOGIN:
+            self._handle_login_stepper(hwnd, data)
+        elif s == WindowState.LOBBY:
+            self._handle_lobby(hwnd, data, ctx)
+        elif s == WindowState.ROOM:
+            self._handle_room(hwnd, data, ctx)
+        elif s == WindowState.RACING:
+            # 比赛中不执行常规逻辑，房主保持监控
+            if data["role"] == "host" and (time.time() - data["race_start_time"] > 300):
+                 # 超过5分钟还没结束，可能卡了，强制置位
+                 data["state"] = WindowState.UNKNOWN
+
+    def _handle_room(self, hwnd, data, ctx):
+        if (time.time() - self.action_cd.get((hwnd, "room"), 0)) < 1.0:
+            return
+
+        # 1. 任务完成撤退逻辑
+        if self.switcher.is_all_tasks_finished():
+            self._log(hwnd, "🛑 任务已达成，尝试返回大厅...")
+            self.engine.key_press(hwnd, win32con.VK_BACK)
+            data["state"] = WindowState.UNKNOWN # 强制触发重新判定
+            self.action_cd[(hwnd, "room")] = time.time() + 4.0
+            return
+
+        members_needed = ctx["total"] - 1
+
+        if data["role"] == "host":
+            # 广播 Session
+            if not ctx["sid"]:
+                rid, mode = self.extract_room_info_logic(hwnd)
+                if rid: self.save_room_session(rid, hwnd, mode)
+                self.action_cd[(hwnd, "room")] = time.time() + 1.0
+                return
+
+            # 2. 顺序控制
+            if len(ctx["members_in_room"]) >= members_needed:
+                ready_len = len(ctx["members_ready"])
+                if ready_len < members_needed:
+                    self._log(hwnd, f"⏳ 等待成员准备 ({ready_len}/{members_needed})")
+                    data["ready_confirm_count"] = 0
+                    return
+
+                # 检查模式切换
+                if self.cfg_mgr.get_user_config("mode_control.enabled"):
+                    should_switch, next_mode_cfg = self.switcher.check_switch_condition()
+                    if should_switch and next_mode_cfg:
+                        self._perform_visual_mode_switch(hwnd, target_mode_cfg=next_mode_cfg)
+                        return
+
+                # 最终开赛
+                data["ready_confirm_count"] += 1
+                if data["ready_confirm_count"] >= 2: # 增加一次确认循环防止UI假死
+                    self._log(hwnd, "🏁 开赛！")
+                    if self.room_mod.click_start(hwnd):
+                        data["state"] = WindowState.RACING
+                        data["race_start_time"] = time.time()
+                        data["ready_confirm_count"] = 0
+                        self.action_cd[(hwnd, "room")] = time.time() + 5.0
+                else:
+                    self.action_cd[(hwnd, "room")] = time.time() + 0.5
+            else:
+                self._log(hwnd, f"等待成员入场 ({len(ctx['members_in_room'])}/{members_needed})")
+        else:
+            # 成员逻辑
+            if self.mode_switching.get(ctx.get("host_h", 0), False):
+                return
+            if hwnd not in ctx["members_ready"]:
+                self._log(hwnd, "点击准备")
+                self.room_mod.click_ready(hwnd)
+                self.action_cd[(hwnd, "room")] = time.time() + 1.0
+
+    def _perform_visual_mode_switch(self, hwnd, target_mode_cfg):
+        self.win_states[hwnd]["locked"] = True
+        self.mode_switching[hwnd] = True
+        
+        try:
+            self._log(hwnd, f"🔄 切换至模式: {target_mode_cfg['name']}")
+            m_pos = self.cfg_mgr.get_config("coords.room_management")
+            s_pos = target_mode_cfg.get("click_coord") or self.cfg_mgr.get_config("coords.mode_switch")
+            c_pos = self.cfg_mgr.get_config("coords.confirm")
+
+            self.engine.click(hwnd, m_pos[0], m_pos[1])
+            time.sleep(1.2)
+
+            rule_img = self.cfg_mgr.get_template_path(target_mode_cfg.get("rule_img"))
+            for _ in range(3):
+                if rule_img and self.engine.match_template(hwnd, rule_img, 0.85)[0]:
+                    self.engine.click(hwnd, c_pos[0], c_pos[1])
+                    time.sleep(1.0)
+                    # 切换成功重新广播 Session (因为模式变了)
+                    rid, _ = self.extract_room_info_logic(hwnd, skip_menu=True)
+                    if rid: self.save_room_session(rid, hwnd, target_mode_cfg["id"])
+                    self.switcher.manual_set_mode(target_mode_cfg["id"])
+                    break
+                else:
+                    self.engine.click(hwnd, s_pos[0], s_pos[1])
+                    time.sleep(1.2)
+        finally:
+            self.mode_switching[hwnd] = False
+            self.win_states[hwnd]["locked"] = False
+            self.action_cd[(hwnd, "room")] = time.time() + 1.0
+
+    def extract_room_info_logic(self, hwnd, skip_menu=False):
+        # 剪贴板加锁，防止多窗口冲突
+        with clipboard_lock:
+            seq = self.cfg_mgr.get_config("get_room_name_sequence", [])
+            for i, s in enumerate(seq):
+                if i == 0 and skip_menu: continue
+                self.engine.click(hwnd, s["coord"][0], s["coord"][1])
+                if s.get("type") == "select_and_copy":
+                    time.sleep(0.5)
+                    self.engine.ctrl_a_c(hwnd)
+                time.sleep(0.8)
+            text = self.engine.get_clipboard_text()
+            rid_list = re.findall(r"\d+", str(text))
+            return (rid_list[-1] if rid_list else None), self.switcher.state["current_mode"]
+
+    def save_room_session(self, rid, hwnd, mode="unknown"):
+        p = self.cfg_mgr.get_path("room_session")
+        try:
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({"room_id": str(rid), "host_hwnd": int(hwnd), "mode": mode, "timestamp": time.time()}, f)
+            self._log(hwnd, f"✅ Session 广播成功: {rid}")
+        except: pass
+
+    def _handle_lobby(self, hwnd, data, ctx):
+        if (time.time() - self.action_cd.get((hwnd, "lobby"), 0)) < 1.0:
+            return
+
+        if self.switcher.is_all_tasks_finished():
+            if not self.final_tasks_done.get(hwnd, False):
+                data["locked"] = True
+                self.task_mod.run(hwnd)
+                self.final_tasks_done[hwnd] = True
+                data["locked"] = False
+            return
+
+        if not ctx["sid"] and ctx["host_h"] is None:
+            if data["index"] == self.leader_idx:
+                self._log(hwnd, "[Leader] 开始创建房间...")
+                data["locked"] = True
+                for s in self.cfg_mgr.get_config("room_creation", []):
+                    self._execute_config_step(hwnd, s)
+                    time.sleep(0.6)
+                data["locked"] = False
+        elif ctx["sid"] and data["role"] == "member":
+            self._log(hwnd, f"正在加入房间 {ctx['sid']}")
+            self._execute_join_cmd(hwnd, ctx["sid"])
+            self.action_cd[(hwnd, "lobby")] = time.time() + 2.0
+
+    def _execute_config_step(self, hwnd, step):
+        c = step.get("coord")
+        self.engine.click(hwnd, c[0], c[1])
+        if step.get("type") == "input_text":
+            time.sleep(0.5)
+            self.engine.type_text(hwnd, 0, 0, str(self.cfg_mgr.current_password))
+
+    def _execute_join_cmd(self, hwnd, rid):
+        chat = self.cfg_mgr.get_config("chat_input_coord", [300, 1060])
+        self.engine.click(hwnd, chat[0], chat[1])
+        time.sleep(0.8)
+        # 用剪贴板锁保护输入
+        with clipboard_lock:
+            self.engine.type_text(hwnd, 0, 0, f"##{rid} {self.cfg_mgr.current_password}")
+        self.engine.key_press(hwnd, win32con.VK_RETURN)
+
+    def _handle_login_stepper(self, hwnd, data):
+        # ... (保留原有的登录逻辑，但建议给点击加些微抖动)
+        if (time.time() - self.action_cd.get((hwnd, "login"), 0)) < 1.5:
+            return
+        # 基础登录 (Space 跳过动画/输入账号)
+        if self._handle_base_login(hwnd, data):
+            return
+        # 登录序列点击
+        l_seq = self.cfg_mgr.get_config("login_sequence", [])
+        if data["login_step_idx"] < len(l_seq):
+            target = l_seq[data["login_step_idx"]]
+            p = self.cfg_mgr.get_template_path(target["check_img"])
+            if self.engine.match_template(hwnd, p, 0.75)[0]:
+                self.engine.click(hwnd, target["coord"][0], target["coord"][1])
+                data["login_step_idx"] += 1
+        self.action_cd[(hwnd, "login")] = time.time()
+
+    def _handle_base_login(self, hwnd, data):
+        # 简化的检查逻辑...
+        return False # 实际根据原逻辑填充
+
+    def _load_session_file(self):
+        p = self.cfg_mgr.get_path("room_session")
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    if time.time() - d.get("timestamp", 0) < 600: return d
+            except: pass
+        return {}

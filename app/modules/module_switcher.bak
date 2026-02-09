@@ -1,0 +1,146 @@
+# -*- coding: utf-8 -*-
+import os
+import json
+import time
+
+class ModeSwitcher:
+    def __init__(self, config_manager, engine):
+        self.cfg = config_manager
+        self.engine = engine
+        
+        # 匹配 user_config.json 的路径
+        paths = self.cfg.get_user_config('paths', {})
+        self.state_path = os.path.join(paths.get('data_dir', 'data'), "switcher_state.json")
+        
+        # 初始化状态（使用 TaskController 期待的字段名 games_in_current_mode）
+        self.state = self._load_state()
+        
+        # 房主开关逻辑
+        self.enabled = self.cfg.get_user_config('mode_control', {}).get('enabled', False)
+        self.interval = 5 
+        
+        self.refresh_config()
+
+    def _load_state(self):
+        default = {"current_mode": "mode_item", "games_in_current_mode": 0, "all_tasks_finished": False}
+        if os.path.exists(self.state_path):
+            try:
+                with open(self.state_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    for k, v in default.items():
+                        if k not in data: data[k] = v
+                    return data
+            except: pass
+        return default
+
+    def _save_state(self):
+        try:
+            os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+            with open(self.state_path, 'w', encoding='utf-8') as f:
+                json.dump(self.state, f, indent=4)
+        except: pass
+
+    def refresh_config(self):
+        """同步 target 到 interval"""
+        tasks = self.cfg.get_user_config('mode_control', {}).get('tasks', [])
+        curr_id = self.state.get('current_mode', 'mode_item')
+
+        target = 5
+        for t in tasks:
+            if t['id'] == curr_id:
+                target = t.get('target', 5)
+                break
+
+        if self.interval != target:
+            self.interval = target
+            print(f"   [Switcher] 模式 {curr_id} 目标局数: {target}")
+
+# module_switcher.py 增加或修改此方法
+
+    def sync_current_mode(self, detected_mode_id):
+        """
+        基于视觉识别结果强制同步状态
+        """
+        if detected_mode_id == "unknown":
+            print("⚠️ 视觉识别无法确定当前模式，将保持默认状态")
+            return
+
+        if self.state['current_mode'] != detected_mode_id:
+            print(f"🎯 [视觉同步] 发现实际模式为 {detected_mode_id}，正在更新内部计数器...")
+            self.state['current_mode'] = detected_mode_id
+            self.state['games_in_current_mode'] = 0 # 既然模式变了，计数器重置
+            self._save_state()
+            self.refresh_config()
+
+
+    def report_game_finished(self):
+        """游戏开始/结束时上报"""
+        if self.state.get('all_tasks_finished', False):
+            return
+
+        self.state['games_in_current_mode'] += 1
+
+        # 查找模式名称
+        curr_mode_id = self.state['current_mode']
+        mode_name = curr_mode_id
+        mode_configs = self.cfg.get_config("mode_configs", [])
+        for m in mode_configs:
+            if m.get('id') == curr_mode_id:
+                mode_name = m.get('name', curr_mode_id)
+                break
+
+        print(f"📊 [计数] {mode_name}: {self.state['games_in_current_mode']}/{self.interval} (mode_id={curr_mode_id})")
+        self._save_state()
+
+# module_switcher.py 里的 perform_switch
+
+    def perform_switch(self, host_hwnd, task_controller=None):
+        """利用 GameEngine 适配后的自动切换"""
+        # 获取模式配置
+        mode_configs = self.cfg.get_config("mode_configs", [])
+        all_ids = [m['id'] for m in mode_configs]
+        curr_id = self.state.get('current_mode', all_ids[0])
+
+        # 寻找下一个模式
+        next_idx = (all_ids.index(curr_id) + 1) % len(all_ids)
+        target_mode = mode_configs[next_idx]
+
+        # 直接读取 1920 坐标
+        mgr_pos = self.cfg.get_config("coords.room_management", [1650, 540])
+        click_pos = target_mode['click_coord']
+        confirm_pos = self.cfg.get_config("coords.confirm", [1500, 920])
+
+        print(f"🔄 模式切换: {curr_id} -> {target_mode['id']}")
+
+        # 执行点击顺序
+        self.engine.click(host_hwnd, mgr_pos[0], mgr_pos[1])
+        time.sleep(1.2)
+
+        self.engine.click(host_hwnd, click_pos[0], click_pos[1])
+        time.sleep(1.0)
+
+        self.engine.click(host_hwnd, confirm_pos[0], confirm_pos[1])
+
+        # 更新状态
+        self.state['current_mode'] = target_mode['id']
+        self.state['games_in_current_mode'] = 0
+        self._save_state()
+        self.refresh_config()
+
+        # 重新提取房间信息并更新 session
+        if task_controller:
+            print(f"   [Switcher] 重新提取房间信息...")
+            room_id, detected_mode = task_controller.extract_room_info_logic(host_hwnd)
+            if room_id:
+                task_controller.save_room_session(room_id, host_hwnd, detected_mode)
+                print(f"✅ Session 已更新: 房号[{room_id}] 模式[{detected_mode}]")
+
+        # 清除模式切换状态
+        task_controller.mode_switching[host_hwnd] = False
+        return True
+
+
+
+
+
+

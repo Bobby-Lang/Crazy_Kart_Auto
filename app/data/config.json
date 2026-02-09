@@ -1,0 +1,296 @@
+{
+    "target_window_title": "疯狂赛车怀旧版",
+    "key_to_press": "space",
+    "pause_hotkey": "f9",
+    "stop_hotkey": "f10",
+    "reset_hotkey": "f8",
+    "window_arrangement": {
+        "enabled": true,
+        "description": "窗口自动阶梯排列配置",
+        "排列方向": "from_top_right",
+        "偏移设置": {
+            "offset_mode": "title_bars",
+            "title_bar_multiple": 2,
+            "offset_x": 40,
+            "offset_y": 40
+        },
+        "边界保护": {
+            "min_margin": 10,
+            "auto_resize": false
+        }
+    },
+    "input_coords": {
+        "acc_input": [
+            520,
+            300
+        ],
+        "pwd_input": [
+            520,
+            350
+        ]
+    },
+    "pre_login": {
+        "region_skip": {
+            "check_img": "login_1.png",
+            "action": "key_press",
+            "key": "space",
+            "desc": "大区选择界面按空格",
+            "match_threshold": 0.7
+        },
+        "account_input": {
+            "check_img": "login_2.png",
+            "desc": "账号密码输入检测图",
+            "match_threshold": 0.7
+        }
+    },
+    "roles": {
+        "host_index": 0,
+        "desc": "索引为0的窗口作为房主，其余作为成员"
+    },
+    "login_sequence": [
+        {
+            "name": "第1步：选择服务器",
+            "check_img": "check_point_01.png",
+            "coord": [
+                1550,
+                380
+            ],
+            "max_retries": 2,
+            "match_threshold": 0.75,
+            "desc": "当我看到服务器列表界面（特征图）时，去点那个特定的服务器坐标"
+        },
+        {
+            "name": "第2步：选择大区",
+            "check_img": "check_point_02.png",
+            "coord": [
+                1600,
+                270
+            ],
+            "max_retries": 2,
+            "match_threshold": 0.75,
+            "desc": "当我看到大区列表界面（特征图）时，去点那个特定的大区坐标"
+        },
+        {
+            "name": "第3步：选择签到",
+            "check_img": "check_point_03.png",
+            "coord": [
+                1705,
+                80
+            ],
+            "max_retries": 2,
+            "match_threshold": 0.75,
+            "desc": "当我看到签到界面（特征图）时，去点那个特定的大区坐标"
+        },
+        {
+            "name": "第4步：选中活动界面",
+            "check_img": "check_point_04.png",
+            "coord": [
+                450,
+                800
+            ],
+            "max_retries": 2,
+            "match_threshold": 0.75,
+            "desc": "当我看到活动界面时，去点那个特定的坐标"
+        }
+    ],
+    "final_state": {
+        "img_name": "lobby_feature.png",
+        "threshold": 0.8,
+        "timeout_sec": 1
+    },
+    "emergency_handler": {
+        "enabled": true,
+        "description": "全局异常弹窗监控",
+        "image_config": {
+            "prefix": "emergency_",
+            "count": 7,
+            "extension": ".png"
+        },
+        "action_key": "space",
+        "match_threshold": 0.75,
+        "cooldown": 2.0
+    },
+    "//": "原有配置保持不变...",
+    "task_automation": {
+        "enabled": true,
+        "//": "只有当所有模式对局任务完成后，才执行此模块",
+        "images": {
+            "entry_icon": "task_1.png",
+            "daily_page_flag": "task_2.png",
+            "team_page_flag": "task_3.png",
+            "claim_btn_yellow": "btn_claim.png",
+            "reward_boxes": [
+                "dianquan1.png",
+                "dianquan2.png",
+                "dianquan3.png",
+                "dianquan4.png",
+                "dianquan5.png",
+                "dianquan6.png",
+                "dianquan7.png"
+            ]
+        },
+        "coords": {
+            "team_tab": [
+                40,
+                800
+            ],
+            "desc": "左侧车队任务页签的坐标"
+        },
+        "settings": {
+            "claim_threshold": 0.85,
+            "timeout": 5
+        }
+    },
+    "room_password": "9527",
+    "room_creation": [
+        {
+            "name": "i. 点击创建房间",
+            "coord": [
+                1700,
+                400
+            ],
+            "check_img": "btn_create_room.png",
+            "type": "click"
+        },
+        {
+            "name": "ii. 选择参赛方式",
+            "coord": [
+                1840,
+                354
+            ],
+            "check_img": "mode_selected.png",
+            "type": "click"
+        },
+        {
+            "name": "iii. 设置房间密码",
+            "coord": [
+                1700,
+                470
+            ],
+            "check_img": "pwd_input_focus.png",
+            "type": "input_text",
+            "text_source": "config_str"
+        },
+        {
+            "name": "iv. 账号#1确认创建房间",
+            "coord": [
+                1500,
+                920
+            ],
+            "check_img": "host_feature.png",
+            "type": "click"
+        }
+    ],
+    "chat_input_coord": [
+        300,
+        1060
+    ],
+    "get_room_name_sequence": [
+        {
+            "name": "1. 点击'房间管理'按钮/区域",
+            "desc": "在房间内点击打开房间管理菜单",
+            "coord": [
+                1650,
+                540
+            ],
+            "type": "click"
+        },
+        {
+            "name": "2. 点击'房间名'输入框",
+            "desc": "点击输入框，光标会闪烁，脚本会自动执行全选并复制",
+            "coord": [
+                1700,
+                180
+            ],
+            "type": "select_and_copy"
+        },
+        {
+            "name": "3. 点击'返回/关闭'按钮",
+            "desc": "关闭房间管理，回到房间画面",
+            "coord": [
+                1720,
+                920
+            ],
+            "type": "click"
+        }
+    ],
+    "join_cmd_config": {
+        "desc": "加入房间的指令格式",
+        "cmd_template": "##{room_name} {password}"
+    },
+    "lobby_entry_img": "lobby_feature.png",
+    "host_feature_img": "host_feature.png",
+    "ready_success_img": "ready_ok.png",
+    "ready_button_img": "ready_start.png",
+    "start_button_img": "start_btn.png",
+    "==== 基础坐标配置 ====": "",
+    "coord_ready": [
+        1600,
+        280
+    ],
+    "coord_start": [
+        1600,
+        280
+    ],
+    "==== 模式切换配置 ====": "",
+    "rois": {
+        "mode_selection": [
+            1640,
+            300,
+            1739,
+            345
+        ],
+        "player_status": [
+            1400,
+            200,
+            1700,
+            370
+        ],
+        "host_icon": [
+            1400,
+            200,
+            1700,
+            370
+        ]
+    },
+    "room_management_img": "room_mgr_btn.png",
+    "confirm_img": "confirm_btn.png",
+    "run_count_dir": ".",
+    "mode_configs": [
+        {
+            "id": "mode_item",
+            "name": "道具赛",
+            "rule_img": "mode_item_race.png",
+            "click_coord": [
+                1840,
+                300
+            ],
+            "target_games": 5
+        },
+        {
+            "id": "mode_speed",
+            "name": "疾爽赛",
+            "rule_img": "mode_speed_race.png",
+            "click_coord": [
+                1840,
+                300
+            ],
+            "target_games": 15
+        }
+    ],
+    "coords": {
+        "room_management": [
+            1650,
+            540
+        ],
+        "mode_switch": [
+            1840,
+            300
+        ],
+        "confirm": [
+            1500,
+            920
+        ]
+    },
+    "run_count_file": "counter.txt"
+}
