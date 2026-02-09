@@ -17,8 +17,8 @@ class ModeSwitcher:
         # 加载并检查是否需要重置
         self.state = self._load_and_check_daily_reset()
         
-        # 房主开关
-        self.enabled = self.cfg.get_user_config('mode_control', {}).get('enabled', False)
+        # 房主开关 - 默认启用模式切换
+        self.enabled = self.cfg.get_user_config('mode_control', {}).get('enabled', True)
         
         # 初始化当前目标
         self.current_target = 0
@@ -161,18 +161,17 @@ class ModeSwitcher:
 
     def check_switch_condition(self):
         """检查是否应该切换模式"""
-        if not self.enabled:
-            print(f"[Switcher] 模式切换已禁用 (enabled=False)")
-            return False, None
-
         curr_id = self.state['current_mode']
         curr_progress = self.state["daily_progress"].get(curr_id, 0)
         
-        print(f"[Switcher] 检查切换条件 - 当前模式: {curr_id}, 进度: {curr_progress}/{self.current_target}")
+        print(f"[Switcher] 检查切换条件 - 当前模式: {curr_id}, 进度: {curr_progress}/{self.current_target}, enabled={self.enabled}")
         
-        # 核心修改：如果当前模式还没做完，绝对不切
+        # 如果当前模式还没做完，绝对不切（除非强制切换）
         if curr_progress < self.current_target:
-            print(f"[Switcher] 当前模式未完成，继续当前模式")
+            if not self.enabled:
+                print(f"[Switcher] 当前模式未完成且切换已禁用，继续当前模式")
+            else:
+                print(f"[Switcher] 当前模式未完成，继续当前模式")
             return False, None
 
         # 当前模式做完了，寻找下一个
