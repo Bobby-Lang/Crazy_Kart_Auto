@@ -130,6 +130,9 @@ class ModeSwitcher:
             
         self.state["daily_progress"][curr_id] += 1
         
+        # 刷新配置，确保 current_target 是最新的
+        self.refresh_config()
+        
         # 显示所有模式的进度
         mode_configs = self.cfg.get_config("mode_configs", [])
         progress_parts = []
@@ -157,24 +160,31 @@ class ModeSwitcher:
 # app/modules/module_switcher.py
 
     def check_switch_condition(self):
+        """检查是否应该切换模式"""
         if not self.enabled:
+            print(f"[Switcher] 模式切换已禁用 (enabled=False)")
             return False, None
 
         curr_id = self.state['current_mode']
         curr_progress = self.state["daily_progress"].get(curr_id, 0)
         
+        print(f"[Switcher] 检查切换条件 - 当前模式: {curr_id}, 进度: {curr_progress}/{self.current_target}")
+        
         # 核心修改：如果当前模式还没做完，绝对不切
         if curr_progress < self.current_target:
+            print(f"[Switcher] 当前模式未完成，继续当前模式")
             return False, None
 
         # 当前模式做完了，寻找下一个
         mode_configs = self.cfg.get_config("mode_configs", [])
-        target_mode_cfg = None
         all_ids = [m['id'] for m in mode_configs]
+        
+        print(f"[Switcher] 当前模式已完成，寻找下一个未完成模式 - 所有模式: {all_ids}")
         
         try:
             start_idx = (all_ids.index(curr_id) + 1) % len(all_ids)
-        except:
+        except ValueError:
+            print(f"[Switcher] 警告: 当前模式 {curr_id} 不在配置列表中，从第一个开始")
             start_idx = 0
                 
         for i in range(len(all_ids)):
@@ -183,15 +193,19 @@ class ModeSwitcher:
             
             # 这里的关键：如果试图切向的目标就是当前模式，说明转了一圈都没别的可做了
             if check_id == curr_id:
+                print(f"[Switcher] 已遍历所有模式，都已完成，无需切换")
                 break
 
             target = self._get_target_for_mode(check_id)
             done = self.state["daily_progress"].get(check_id, 0)
             
+            print(f"[Switcher] 检查模式 {check_id}: 进度 {done}/{target}")
+            
             if done < target:
-                target_mode_cfg = mode_configs[idx]
-                return True, target_mode_cfg
-        return False, None
+                print(f"[Switcher] 找到未完成模式: {check_id}，准备切换")
+                return True, mode_configs[idx]
+        
+        print(f"[Switcher] 所有模式都已完成，无需切换")
         return False, None
         
     def is_all_tasks_finished(self):
