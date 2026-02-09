@@ -29,7 +29,7 @@ if str(project_root) not in sys.path:
 
 from app.core.config_manager import ConfigManager
 from app.core.game_engine import GameEngine
-from app.modules.flow_module import AutoGameFlow
+from app.modules.state_machine import AutoGameStateMachine
 
 
 class LogRedirector:
@@ -66,7 +66,7 @@ class FlowWorker(QThread):
             redirector = LogRedirector(self.log_signal)
             sys.stdout = redirector
             
-            self.flow = AutoGameFlow(self.cfg_mgr)
+            self.flow = AutoGameStateMachine(self.cfg_mgr)
             result = self.flow.execute_full_flow()
             
             self.finished_signal.emit(result)
