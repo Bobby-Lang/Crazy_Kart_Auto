@@ -437,11 +437,23 @@ class MainWindow(QMainWindow):
             if os.path.exists(state_path):
                 with open(state_path, 'r', encoding='utf-8') as f:
                     state = json.load(f)
-                    counts = state.get("mode_counts", {})
-                    self.mode_item_count.setText(f"{counts.get('mode_item', 0)} / {self.item_target_spin.value()}")
-                    self.mode_speed_count.setText(f"{counts.get('mode_speed', 0)} / {self.speed_target_spin.value()}")
-        except:
-            pass
+                    # 使用 daily_progress 字段（与 module_switcher.py 保持一致）
+                    progress = state.get("daily_progress", {})
+                    item_done = progress.get('mode_item', 0)
+                    speed_done = progress.get('mode_speed', 0)
+                    
+                    # 从配置管理标签页获取当前目标值
+                    item_target = self.item_target_spin.value()
+                    speed_target = self.speed_target_spin.value()
+                    
+                    self.mode_item_count.setText(f"{item_done} / {item_target}")
+                    self.mode_speed_count.setText(f"{speed_done} / {speed_target}")
+            else:
+                # 如果没有状态文件，显示 0 / 目标值
+                self.mode_item_count.setText(f"0 / {self.item_target_spin.value()}")
+                self.mode_speed_count.setText(f"0 / {self.speed_target_spin.value()}")
+        except Exception as e:
+            self.append_log(f"[警告] 加载统计失败: {e}")
 
     def init_stats_timer(self):
         """初始化统计刷新定时器"""
