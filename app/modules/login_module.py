@@ -1,18 +1,13 @@
 # -*- coding: utf-8 -*-
-import time
-import os
-import json
-import sys
-import win32con
-import win32gui
+import time, os, json, sys
+import win32con, win32gui
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
-# 确保能找到 core 和 logger
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from core import GameEngine, ConfigManager
-from logger import SimpleLogger
+# Ensure package imports work
+from app.core.game_engine import GameEngine
+from app.core.config_manager import ConfigManager
+from app.logger import SimpleLogger
 
 class LoginModule(QThread):
     log_signal = pyqtSignal(int, str, str)

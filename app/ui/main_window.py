@@ -17,10 +17,10 @@ from PyQt6.QtWidgets import (
     QGroupBox, QFormLayout, QMessageBox, QFileDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QSplitter,
     QProgressBar, QCheckBox, QComboBox, QStatusBar, QMenuBar, QMenu,
-    QApplication
+    QApplication, QScrollBar
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QAction, QIcon, QFont, QColor, QTextCharFormat
+from PyQt6.QtGui import QAction, QIcon, QFont, QColor, QTextCharFormat, QCloseEvent
 
 # 导入项目核心模块
 project_root = Path(__file__).parent.parent.parent
@@ -94,6 +94,15 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.load_data()
         self.init_stats_timer()
+        # 加载全局主题样式
+        theme_path = os.path.join(os.path.dirname(__file__), '..', 'resources', 'theme.qss')
+        if os.path.exists(theme_path):
+            try:
+                with open(theme_path, 'r', encoding='utf-8') as f:
+                    self.setStyleSheet(f.read())
+            except Exception as e:
+                print(f"[WARN] 加载主题失败: {e}")
+
         
     def init_ui(self):
         """初始化UI界面"""
@@ -143,23 +152,23 @@ class MainWindow(QMainWindow):
         self.setMenuBar(menubar)
         
         # 文件菜单
-        file_menu = menubar.addMenu("文件")
+        file_menu = menubar.addMenu("文件")  # type: ignore
         
         exit_action = QAction("退出", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
+        file_menu.addAction(exit_action)  # type: ignore
         
         # 工具菜单
-        tools_menu = menubar.addMenu("工具")
+        tools_menu = menubar.addMenu("工具")  # type: ignore
         
         clear_log_action = QAction("清空日志", self)
         clear_log_action.triggered.connect(self.clear_log)
-        tools_menu.addAction(clear_log_action)
+        tools_menu.addAction(clear_log_action)  # type: ignore
         
         open_dir_action = QAction("打开数据目录", self)
         open_dir_action.triggered.connect(self.open_data_directory)
-        tools_menu.addAction(open_dir_action)
+        tools_menu.addAction(open_dir_action)  # type: ignore
         
     def create_control_tab(self):
         """创建控制面板标签页"""
@@ -192,50 +201,21 @@ class MainWindow(QMainWindow):
         action_layout = QHBoxLayout(action_group)
         
         self.start_btn = QPushButton("▶ 开始任务")
-        self.start_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                font-size: 16px;
-                font-weight: bold;
-                padding: 15px 30px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
+        self.start_btn.setObjectName("start_btn")
+        self.start_btn.setStyleSheet("")  # 使用全局样式
         self.start_btn.clicked.connect(self.start_task)
         action_layout.addWidget(self.start_btn)
         
         self.stop_btn = QPushButton("⏹ 停止任务")
-        self.stop_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336;
-                color: white;
-                font-size: 16px;
-                font-weight: bold;
-                padding: 15px 30px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #da190b;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
+        self.stop_btn.setObjectName("stop_btn")
+        self.stop_btn.setStyleSheet("")
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop_task)
         action_layout.addWidget(self.stop_btn)
         
-        action_layout.addStretch()
-        
         self.reset_btn = QPushButton("🔄 重置进度")
-        self.reset_btn.setStyleSheet("padding: 10px 20px;")
+        self.reset_btn.setObjectName("reset_btn")
+        self.reset_btn.setStyleSheet("")
         self.reset_btn.clicked.connect(self.reset_progress)
         action_layout.addWidget(self.reset_btn)
         
@@ -376,7 +356,7 @@ class MainWindow(QMainWindow):
         group = QGroupBox("运行日志")
         layout = QVBoxLayout(group)
         
-        self.log_text = QPlainTextEdit()
+        self.log_text: QPlainTextEdit = QPlainTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumBlockCount(1000)  # 限制最大行数
         self.log_text.setStyleSheet("""
@@ -545,6 +525,9 @@ class MainWindow(QMainWindow):
         """保存账号"""
         try:
             account_path = self.cfg_mgr.get_path("accounts")
+            if not account_path:
+                QMessageBox.critical(self, "错误", "账号路径未配置")
+                return
             with open(account_path, 'w', encoding='utf-8') as f:
                 f.write(self.account_edit.toPlainText())
             QMessageBox.information(self, "成功", "账号已保存！")
@@ -594,6 +577,11 @@ class MainWindow(QMainWindow):
             config["reset_hotkey"] = self.reset_key_edit.text()
             
             config_path = self.cfg_mgr.get_path("config")
+            if not config_path:
+                self.append_log("[错误] 配置路径未找到，无法保存")
+                return
+            # 确保路径非空后打开
+            assert config_path is not None
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=4, ensure_ascii=False)
             
@@ -617,7 +605,8 @@ class MainWindow(QMainWindow):
         self.log_text.appendPlainText(text.strip())
         if self.auto_scroll:
             scrollbar = self.log_text.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
+            if scrollbar:
+                scrollbar.setValue(scrollbar.maximum())
             
     def clear_log(self):
         """清空日志"""
@@ -646,8 +635,10 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "警告", "数据目录不存在！")
             
-    def closeEvent(self, event):
+    def closeEvent(self, a0):
         """关闭事件"""
+        if not a0:
+            return
         if self.flow_worker and self.flow_worker.running:
             reply = QMessageBox.question(
                 self, "确认",
@@ -657,11 +648,11 @@ class MainWindow(QMainWindow):
             
             if reply == QMessageBox.StandardButton.Yes:
                 self.stop_task()
-                event.accept()
+                a0.accept()
             else:
-                event.ignore()
+                a0.ignore()
         else:
-            event.accept()
+            a0.accept()
 
 
 def main():

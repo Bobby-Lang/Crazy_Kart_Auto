@@ -8,10 +8,11 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import GameEngine, ConfigManager
-from logger import SimpleLogger
+
+from app.core.game_engine import GameEngine
+from app.core.config_manager import ConfigManager
+from app.logger import SimpleLogger
 
 class LobbyModule(QThread):
     log_signal = pyqtSignal(int, str, str)

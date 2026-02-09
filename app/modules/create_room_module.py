@@ -1,24 +1,12 @@
 # -*- coding: utf-8 -*-
-import time
-import os
-import json
-import re
-import sys
-import win32api
-import win32con
-import win32gui
-import win32clipboard
+import time, os, json, re, sys, win32api, win32con, win32gui, win32clipboard
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
-# 路径修复
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-try:
-    from core import GameEngine, ConfigManager
-    from logger import SimpleLogger
-except ImportError:
-    print("错误: 无法导入核心组件，请检查目录结构")
-    sys.exit(1)
+# Ensure package imports
+from app.core.game_engine import GameEngine
+from app.core.config_manager import ConfigManager
+from app.logger import SimpleLogger
 
 class CreateRoomModule(QThread):
     log_signal = pyqtSignal(int, str, str)
@@ -35,14 +23,17 @@ class CreateRoomModule(QThread):
 
     def run(self):
         self.running = True
-        if not self.hwnd_list: return
-
+        if not self.hwnd_list:
+            self.log_signal.emit(0, "ERROR", "未提供窗口列表，无法创建房间")
+            return
+        # 取第一个窗口为房主，确保列表非空
         index, host_hwnd, account = self.hwnd_list[0]
         self.log_signal.emit(host_hwnd, "INFO", "房主窗口准备就绪...")
         self.engine.activate_window(host_hwnd)
         
         # 1. 执行创建序列
-        create_seq = self.config.get_config("room_creation", [])
+        # 确保获取到的创建序列为列表
+        create_seq = self.config.get_config("room_creation", []) or []
         for step in create_seq:
             if not self.running: break
             self.engine.activate_window(host_hwnd)
@@ -77,7 +68,7 @@ class CreateRoomModule(QThread):
             self.engine.paste_text(hwnd, str(text))
 
     def extract_room_id(self, hwnd):
-        seq = self.config.get_config("get_room_name_sequence", [])
+        seq = self.config.get_config("get_room_name_sequence", []) or []
         for i, s in enumerate(seq):
             if not self.running: break
             self.engine.activate_window(hwnd)
@@ -110,7 +101,11 @@ class CreateRoomModule(QThread):
 
     def save_session(self, room_id, host_hwnd):
         session_data = {'room_id': str(room_id), 'host_hwnd': host_hwnd, 'timestamp': time.time()}
-        session_path = self.config.get_path('room_session') 
+        # Ensure room_session path exists before saving
+        session_path = self.config.get_path('room_session')
+        if not session_path:
+            self.log_signal.emit(host_hwnd, "ERROR", "room_session 配置缺失，无法保存会话")
+            return
         with open(session_path, 'w', encoding='utf-8') as f:
             json.dump(session_data, f, ensure_ascii=False, indent=4)
 
@@ -120,14 +115,15 @@ if __name__ == "__main__":
     log = SimpleLogger()
     res_path = cfg.get_path('window_results')
     
-    if not os.path.exists(res_path):
+    if not res_path or not os.path.exists(res_path):
         print(f"ERR: 找不到文件 {res_path}")
         sys.exit(1)
-
+    
+    # 读取窗口结果文件并构建列表
     with open(res_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
-        results = [(i['index'], i['hwnd'], {"user": i['username'], "pass": i['password']}) for i in data]
-
+    results = [(i['index'], i['hwnd'], {"user": i['username'], "pass": i['password']}) for i in data]
+    
     worker = CreateRoomModule(results, cfg, log)
     worker.log_signal.connect(lambda h, l, m: print(f"[{l}] {m}"))
     worker.all_ready.connect(app.quit)

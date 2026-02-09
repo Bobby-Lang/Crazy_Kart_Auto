@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
-import time
-import os
-import json
-import win32con
-import sys
+import time, os, json, win32con, sys
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core import GameEngine, ConfigManager
-from logger import SimpleLogger
+# Ensure imports from package root
+from app.core.game_engine import GameEngine
+from app.core.config_manager import ConfigManager
+from app.logger import SimpleLogger
 
 class JoinRoomModule(QThread):
     log_signal = pyqtSignal(int, str, str)
