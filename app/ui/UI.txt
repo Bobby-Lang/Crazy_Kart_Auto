@@ -1,0 +1,121 @@
+from PyQt6.QtWidgets import QStackedWidget, QFrame, QButtonGroup
+
+# ... 之前的导入保持不变 ...
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.cfg_mgr = ConfigManager()
+        self.init_ui()
+        self.apply_modern_style() # 应用样式
+        self.load_data()
+        self.init_stats_timer()
+
+    def apply_modern_style(self):
+        # 这里可以直接加载上面的 QSS 字符串
+        self.setStyleSheet("""
+            /* 将上面的 QSS 粘贴在这里 */
+        """)
+
+    def init_ui(self):
+        self.setWindowTitle("Auto Game Pro")
+        self.setGeometry(100, 100, 1280, 850)
+
+        # 主容器
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # --- 1. 侧边导航栏 ---
+        self.sidebar = QFrame()
+        self.sidebar.setObjectName("sidebar")
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(0, 20, 0, 20)
+
+        # 标题/Logo
+        logo_label = QLabel("AUTO GAME")
+        logo_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #bb9af7; margin-bottom: 20px; padding: 10px;")
+        sidebar_layout.addWidget(logo_label)
+
+        # 导航按钮组
+        self.nav_group = QButtonGroup(self)
+        self.nav_group.setExclusive(True)
+
+        self.btn_dashboard = self.create_nav_btn("🚀 运行面板", 0)
+        self.btn_accounts = self.create_nav_btn("👤 账号管理", 1)
+        self.btn_settings = self.create_nav_btn("⚙️ 系统设置", 2)
+        
+        sidebar_layout.addWidget(self.btn_dashboard)
+        sidebar_layout.addWidget(self.btn_accounts)
+        sidebar_layout.addWidget(self.btn_settings)
+        sidebar_layout.addStretch()
+
+        main_layout.addWidget(self.sidebar)
+
+        # --- 2. 右侧内容区 ---
+        content_container = QVBoxLayout()
+        
+        # 顶部状态条
+        self.top_bar = QFrame()
+        self.top_bar.setFixedHeight(60)
+        self.top_bar.setStyleSheet("background-color: #1a1b26; border-bottom: 1px solid #24283b;")
+        top_layout = QHBoxLayout(self.top_bar)
+        self.status_title = QLabel("运行状态: 就绪")
+        top_layout.addWidget(self.status_title)
+        top_layout.addStretch()
+        content_container.addWidget(self.top_bar)
+
+        # 核心堆栈布局 (用于切换页面)
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.create_control_tab()) # Index 0
+        self.stack.addWidget(self.create_account_tab()) # Index 1
+        self.stack.addWidget(self.create_config_tab())  # Index 2
+        
+        content_container.addWidget(self.stack)
+        
+        # 将内容区加入主布局
+        main_layout.addLayout(content_container)
+
+    def create_nav_btn(self, text, index):
+        btn = QPushButton(text)
+        btn.setObjectName("nav_btn")
+        btn.setCheckable(True)
+        if index == 0: btn.setChecked(True)
+        btn.clicked.connect(lambda: self.stack.setCurrentIndex(index))
+        return btn
+
+    # ... 改造后的 create_control_tab ...
+    def create_control_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        
+        # 使用卡片式容器
+        card = QFrame()
+        card.setObjectName("card")
+        card_layout = QVBoxLayout(card)
+        
+        # 统计面板 (水平排布，像 Dashboard 仪表盘)
+        stats_layout = QHBoxLayout()
+        # 这种可以做成小卡片组件
+        # ... 这里添加进度条和统计 ...
+        
+        card_layout.addLayout(stats_layout)
+        layout.addWidget(card)
+        
+        # 操作按钮
+        btn_box = QHBoxLayout()
+        self.launch_run_btn = QPushButton("🚀 全力启动")
+        self.launch_run_btn.setObjectName("primary_btn") # 使用 QSS 中的强调色
+        self.stop_btn = QPushButton("⏹ 停止运行")
+        self.stop_btn.setObjectName("stop_btn")         # 使用红色
+        
+        btn_box.addWidget(self.launch_run_btn)
+        btn_box.addWidget(self.stop_btn)
+        layout.addLayout(btn_box)
+
+        # 日志区域占据下方
+        layout.addWidget(self.create_log_group())
+        
+        return page

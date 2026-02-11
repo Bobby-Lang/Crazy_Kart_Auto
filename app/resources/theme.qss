@@ -78,3 +78,96 @@ QGroupBox::title {
     color: #ff9800;
     font-weight: bold;
 }
+
+/* 全局背景与字体 */
+QWidget {
+    background-color: #1a1b26;
+    color: #a9b1d6;
+    font-family: "Segoe UI", "Microsoft YaHei";
+    font-size: 14px;
+}
+
+/* 侧边栏 */
+#sidebar {
+    background-color: #16161e;
+    border-right: 1px solid #24283b;
+    min-width: 200px;
+}
+
+/* 顶部状态条 */
+#top_bar {
+    background-color: #1a1b26;
+    border-bottom: 1px solid #24283b;
+}
+
+/* 导航按钮 */
+QPushButton#nav_btn {
+    background-color: transparent;
+    border: none;
+    color: #787c99;
+    padding: 12px 20px;
+    text-align: left;
+    font-weight: bold;
+    border-radius: 8px;
+    margin: 4px 10px;
+}
+
+QPushButton#nav_btn:hover {
+    background-color: #24283b;
+    color: #bb9af7;
+}
+
+QPushButton#nav_btn:checked {
+    background-color: #3d59a1;
+    color: white;
+}
+
+/* 卡片容器 */
+QFrame#card {
+    background-color: #24283b;
+    border-radius: 12px;
+    border: 1px solid #2f334d;
+}
+
+/* 现代按钮 */
+QPushButton#primary_btn {
+    background-color: #7aa2f7;
+    color: #1a1b26;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: bold;
+}
+
+QPushButton#primary_btn:hover {
+    background-color: #89ddff;
+}
+
+QPushButton#stop_btn {
+    background-color: #f7768e;
+    color: #1a1b26;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: bold;
+}
+
+/* 日志框 */
+QPlainTextEdit {
+    background-color: #16161e;
+    border: 1px solid #24283b;
+    border-radius: 8px;
+    color: #9ece6a;
+    font-family: "Consolas";
+}
+
+/* 进度条 */
+QProgressBar {
+    border: 1px solid #24283b;
+    border-radius: 5px;
+    text-align: center;
+    background-color: #16161e;
+}
+
+QProgressBar::chunk {
+    background-color: #7aa2f7;
+    border-radius: 4px;
+}

@@ -12,7 +12,7 @@ import threading
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QStackedWidget, QFrame, QButtonGroup,
     QPushButton, QLabel, QTextEdit, QPlainTextEdit, QLineEdit, QSpinBox,
     QGroupBox, QFormLayout, QMessageBox, QFileDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QSplitter,
@@ -433,9 +433,13 @@ class MainWindow(QMainWindow):
         self.task_worker = None
         self.stats_timer = None
         self.init_ui()
+        self.apply_modern_style()
         self.load_data()
         self.init_stats_timer()
-        # 加载全局主题样式
+
+        
+    def apply_modern_style(self):
+        """应用现代主题样式"""
         theme_path = os.path.join(os.path.dirname(__file__), '..', 'resources', 'theme.qss')
         if os.path.exists(theme_path):
             try:
@@ -444,48 +448,89 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"[WARN] 加载主题失败: {e}")
 
-        
     def init_ui(self):
-        """初始化UI界面"""
-        self.setWindowTitle("疯狂赛车自动游戏控制器")
-        self.setGeometry(100, 100, 1200, 800)
+        """初始化现代UI界面（侧边栏+卡片布局）"""
+        self.setWindowTitle("Auto Game Pro - 疯狂赛车自动控制器")
+        self.setGeometry(100, 100, 1280, 850)
         
-        # 创建中央部件
+        # 主容器
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
-        # 主布局
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(10)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        # --- 1. 侧边导航栏 ---
+        self.sidebar = QFrame()
+        self.sidebar.setObjectName("sidebar")
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(0, 20, 0, 20)
         
-        # 创建菜单栏
-        self.create_menu_bar()
+        # 标题/Logo
+        logo_label = QLabel("AUTO GAME")
+        logo_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #bb9af7; margin-bottom: 20px; padding: 10px;")
+        sidebar_layout.addWidget(logo_label)
         
-        # 创建标签页
-        self.tab_widget = QTabWidget()
-        main_layout.addWidget(self.tab_widget)
+        # 导航按钮组
+        self.nav_group = QButtonGroup(self)
+        self.nav_group.setExclusive(True)
         
-        # 控制面板标签
-        self.control_tab = self.create_control_tab()
-        self.tab_widget.addTab(self.control_tab, "任务控制")
+        self.btn_dashboard = self.create_nav_btn("🚀 运行面板", 0)
+        self.btn_accounts = self.create_nav_btn("👤 账号管理", 1)
+        self.btn_settings = self.create_nav_btn("⚙️ 系统设置", 2)
         
-        # 账号管理标签
-        self.account_tab = self.create_account_tab()
-        self.tab_widget.addTab(self.account_tab, "账号管理")
+        sidebar_layout.addWidget(self.btn_dashboard)
+        sidebar_layout.addWidget(self.btn_accounts)
+        sidebar_layout.addWidget(self.btn_settings)
+        sidebar_layout.addStretch()
         
-        # 配置管理标签
-        self.config_tab = self.create_config_tab()
-        self.tab_widget.addTab(self.config_tab, "配置管理")
+        main_layout.addWidget(self.sidebar)
         
-        # 日志显示区域
-        self.log_group = self.create_log_group()
-        main_layout.addWidget(self.log_group)
+        # --- 2. 右侧内容区 ---
+        content_container = QWidget()
+        content_layout = QVBoxLayout(content_container)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
         
-        # 状态栏
+        # 顶部状态条
+        self.top_bar = QFrame()
+        self.top_bar.setFixedHeight(60)
+        self.top_bar.setObjectName("top_bar")
+        top_layout = QHBoxLayout(self.top_bar)
+        top_layout.setContentsMargins(20, 0, 20, 0)
+        
+        self.status_title = QLabel("运行状态: 就绪")
+        self.status_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        top_layout.addWidget(self.status_title)
+        top_layout.addStretch()
+        
+        # 状态栏信息
         self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
+        self.status_bar.setObjectName("status_bar")
         self.status_bar.showMessage("就绪")
+        top_layout.addWidget(self.status_bar)
+        
+        content_layout.addWidget(self.top_bar)
+        
+        # 核心堆栈布局 (用于切换页面)
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.create_control_tab())  # Index 0
+        self.stack.addWidget(self.create_account_tab())  # Index 1
+        self.stack.addWidget(self.create_config_tab())   # Index 2
+        
+        content_layout.addWidget(self.stack, 1)
+        
+        main_layout.addWidget(content_container, 1)
+
+    def create_nav_btn(self, text, index):
+        """创建导航按钮"""
+        btn = QPushButton(text)
+        btn.setObjectName("nav_btn")
+        btn.setCheckable(True)
+        if index == 0:
+            btn.setChecked(True)
+        btn.clicked.connect(lambda: self.stack.setCurrentIndex(index))
+        return btn
         
     def create_menu_bar(self):
         """创建菜单栏"""
@@ -512,127 +557,127 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(open_dir_action)  # type: ignore
         
     def create_control_tab(self):
-        """创建控制面板标签页"""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setSpacing(15)
+        """创建控制面板标签页（卡片式布局）"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(20)
+        layout.setContentsMargins(20, 20, 20, 20)
         
-        # 状态信息组
-        status_group = QGroupBox("运行状态")
-        status_layout = QHBoxLayout(status_group)
+        # === 卡片1：状态面板 ===
+        card = QFrame()
+        card.setObjectName("card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(15)
+        card_layout.setContentsMargins(20, 20, 20, 20)
         
+        # 状态标签（使用status_title替代status_label）
+        status_layout = QHBoxLayout()
         self.status_label = QLabel("状态: 待机")
-        self.status_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        self.status_label.setStyleSheet("font-size: 18px; font-weight: bold;")
         status_layout.addWidget(self.status_label)
-        
         status_layout.addStretch()
+        card_layout.addLayout(status_layout)
         
+        # 进度条
+        progress_layout = QHBoxLayout()
+        progress_layout.addWidget(QLabel("进度:"))
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
-        status_layout.addWidget(QLabel("进度:"))
-        status_layout.addWidget(self.progress_bar)
-        status_layout.setStretchFactor(self.progress_bar, 1)
+        progress_layout.addWidget(self.progress_bar, 1)
+        card_layout.addLayout(progress_layout)
         
-        layout.addWidget(status_group)
+        # 统计面板
+        stats_layout = QHBoxLayout()
         
-        # 操作按钮区域 - 使用两个独立的组
-        operation_layout = QHBoxLayout()
-        operation_layout.setSpacing(15)
-
-        # 游戏启动组（左）
-        launch_group = QGroupBox("游戏启动")
-        launch_layout = QHBoxLayout(launch_group)
-        launch_layout.setSpacing(10)
-
+        # 道具赛统计卡片
+        item_card = QFrame()
+        item_card.setObjectName("card")
+        item_card_layout = QVBoxLayout(item_card)
+        item_title = QLabel("道具赛")
+        item_title.setStyleSheet("font-size: 14px; color: #bb9af7;")
+        item_card_layout.addWidget(item_title)
+        self.mode_item_count = QLabel("0 / 5")
+        self.mode_item_count.setStyleSheet("font-size: 24px; font-weight: bold;")
+        item_card_layout.addWidget(self.mode_item_count)
+        stats_layout.addWidget(item_card)
+        
+        # 疾爽赛统计卡片
+        speed_card = QFrame()
+        speed_card.setObjectName("card")
+        speed_card_layout = QVBoxLayout(speed_card)
+        speed_title = QLabel("疾爽赛")
+        speed_title.setStyleSheet("font-size: 14px; color: #7aa2f7;")
+        speed_card_layout.addWidget(speed_title)
+        self.mode_speed_count = QLabel("0 / 15")
+        self.mode_speed_count.setStyleSheet("font-size: 24px; font-weight: bold;")
+        speed_card_layout.addWidget(self.mode_speed_count)
+        stats_layout.addWidget(speed_card)
+        
+        card_layout.addLayout(stats_layout)
+        layout.addWidget(card)
+        
+        # === 操作按钮区域 ===
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(15)
+        
         self.launch_btn = QPushButton("🚀 启动游戏")
-        self.launch_btn.setObjectName("launch_btn")
-        self.launch_btn.setToolTip("仅启动游戏窗口，不开始任务\n用于先启动游戏，稍后手动开始任务")
-        self.launch_btn.setMinimumWidth(120)
+        self.launch_btn.setObjectName("primary_btn")
+        self.launch_btn.setToolTip("仅启动游戏窗口，不开始任务")
         self.launch_btn.clicked.connect(self.launch_game_only)
-        launch_layout.addWidget(self.launch_btn)
-
+        btn_layout.addWidget(self.launch_btn)
+        
         self.launch_run_btn = QPushButton("🚀▶ 启动并运行")
-        self.launch_run_btn.setObjectName("launch_run_btn")
-        self.launch_run_btn.setToolTip("启动游戏并开始任务\n全新开始，会重置任务进度")
-        self.launch_run_btn.setMinimumWidth(140)
+        self.launch_run_btn.setObjectName("primary_btn")
+        self.launch_run_btn.setToolTip("启动游戏并开始任务")
         self.launch_run_btn.clicked.connect(self.launch_and_run)
-        launch_layout.addWidget(self.launch_run_btn)
-
-        launch_layout.addStretch()
-        operation_layout.addWidget(launch_group, 1)
-
-        # 任务控制组（右）
-        task_group = QGroupBox("任务控制")
-        task_layout = QHBoxLayout(task_group)
-        task_layout.setSpacing(10)
-
+        btn_layout.addWidget(self.launch_run_btn)
+        
         self.start_btn = QPushButton("▶ 开始任务")
-        self.start_btn.setObjectName("start_btn")
-        self.start_btn.setToolTip("使用已启动的游戏窗口开始任务\n继续之前的进度")
-        self.start_btn.setMinimumWidth(120)
+        self.start_btn.setObjectName("primary_btn")
+        self.start_btn.setToolTip("使用已启动的游戏窗口开始任务")
         self.start_btn.clicked.connect(self.start_task)
-        task_layout.addWidget(self.start_btn)
-
+        btn_layout.addWidget(self.start_btn)
+        
         self.stop_btn = QPushButton("⏹ 停止")
         self.stop_btn.setObjectName("stop_btn")
         self.stop_btn.setToolTip("停止当前任务")
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setMinimumWidth(80)
         self.stop_btn.clicked.connect(self.stop_task)
-        task_layout.addWidget(self.stop_btn)
-
+        btn_layout.addWidget(self.stop_btn)
+        
         self.reset_btn = QPushButton("🔄 重置")
         self.reset_btn.setObjectName("reset_btn")
-        self.reset_btn.setToolTip("重置任务进度为0\n用于重新开始计数")
-        self.reset_btn.setMinimumWidth(80)
+        self.reset_btn.setToolTip("重置任务进度为0")
         self.reset_btn.clicked.connect(self.reset_progress)
-        task_layout.addWidget(self.reset_btn)
-
-        task_layout.addStretch()
-        operation_layout.addWidget(task_group, 1)
-
-        layout.addLayout(operation_layout)
+        btn_layout.addWidget(self.reset_btn)
         
-        # 手动功能组（新添加）
-        manual_group = QGroupBox("手动功能")
-        manual_layout = QHBoxLayout(manual_group)
-        manual_layout.setSpacing(10)
-
+        layout.addLayout(btn_layout)
+        
+        # === 手动功能按钮 ===
+        manual_layout = QHBoxLayout()
+        manual_layout.setSpacing(15)
+        
         self.claim_reward_btn = QPushButton("🎁 领取任务奖励")
-        self.claim_reward_btn.setObjectName("claim_reward_btn")
-        self.claim_reward_btn.setToolTip("手动触发领取任务奖励\n需要确保游戏窗口已在大厅")
-        self.claim_reward_btn.setMinimumWidth(140)
+        self.claim_reward_btn.setObjectName("primary_btn")
         self.claim_reward_btn.clicked.connect(self.manual_claim_reward)
         manual_layout.addWidget(self.claim_reward_btn)
-
+        
         self.check_in_btn = QPushButton("📅 签到")
-        self.check_in_btn.setObjectName("check_in_btn")
-        self.check_in_btn.setToolTip("执行每日签到\n需要确保游戏窗口已在大厅")
-        self.check_in_btn.setMinimumWidth(100)
+        self.check_in_btn.setObjectName("primary_btn")
         self.check_in_btn.clicked.connect(self.manual_check_in)
         # 签到功能预留，暂时禁用（等待模块实现）
         # self.check_in_btn.setEnabled(False)
         manual_layout.addWidget(self.check_in_btn)
-
+        
         manual_layout.addStretch()
-        layout.addWidget(manual_group)
+        layout.addLayout(manual_layout)
         
-        # 统计信息组
-        stats_group = QGroupBox("任务统计")
-        stats_layout = QFormLayout(stats_group)
+        # 日志区域占据下方
+        layout.addWidget(self.create_log_group(), 1)
         
-        self.mode_item_count = QLabel("0 / 5")
-        self.mode_speed_count = QLabel("0 / 15")
-        
-        stats_layout.addRow("道具赛进度:", self.mode_item_count)
-        stats_layout.addRow("疾爽赛进度:", self.mode_speed_count)
-        
-        layout.addWidget(stats_group)
-        layout.addStretch()
-        
-        return tab
+        return page
         
     def create_account_tab(self):
         """创建账号管理标签页"""
@@ -900,7 +945,8 @@ class MainWindow(QMainWindow):
         account_text = self.account_edit.toPlainText().strip()
         if not account_text:
             QMessageBox.warning(self, "警告", "请先配置账号信息！")
-            self.tab_widget.setCurrentIndex(1)
+            self.stack.setCurrentIndex(1)
+            self.btn_accounts.setChecked(True)
             return
 
         self.status_label.setText("状态: 启动中")
@@ -944,7 +990,8 @@ class MainWindow(QMainWindow):
         account_text = self.account_edit.toPlainText().strip()
         if not account_text:
             QMessageBox.warning(self, "警告", "请先配置账号信息！")
-            self.tab_widget.setCurrentIndex(1)
+            self.stack.setCurrentIndex(1)
+            self.btn_accounts.setChecked(True)
             return
 
         # 询问是否清理旧进度
