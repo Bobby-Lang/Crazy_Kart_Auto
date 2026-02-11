@@ -484,6 +484,22 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.btn_settings)
         sidebar_layout.addStretch()
         
+        # 作者和版本信息
+        footer_widget = QWidget()
+        footer_layout = QVBoxLayout(footer_widget)
+        footer_layout.setContentsMargins(15, 10, 15, 10)
+        footer_layout.setSpacing(5)
+        
+        author_label = QLabel("Created by Bobby.Lang")
+        author_label.setStyleSheet("color: #565f89; font-size: 11px;")
+        footer_layout.addWidget(author_label)
+        
+        version_label = QLabel("v2.1.0")
+        version_label.setStyleSheet("color: #565f89; font-size: 11px;")
+        footer_layout.addWidget(version_label)
+        
+        sidebar_layout.addWidget(footer_widget)
+        
         main_layout.addWidget(self.sidebar)
         
         # --- 2. 右侧内容区 ---
