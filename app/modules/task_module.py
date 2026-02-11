@@ -113,4 +113,7 @@ class TaskModule:
         """点击'车队任务'页签"""
         coord = self.cfg.get("coords", {}).get("team_tab", [46, 810])
         self.engine.click(hwnd, coord[0], coord[1])
-        time.sleep(1.5)
+        time.sleep(0.5)
+        # 按空格键关闭可能的弹窗或确认切换
+        self.engine.key_press(hwnd, win32con.VK_SPACE)
+        time.sleep(1.0)

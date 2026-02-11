@@ -33,7 +33,7 @@ class LobbyModule(QThread):
             if win32gui.IsIconic(hwnd):
                 win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             win32gui.SetForegroundWindow(hwnd)
-            time.sleep(0.5)
+            time.sleep(0.2)
         except:
             pass
 
@@ -99,10 +99,10 @@ class LobbyModule(QThread):
             self.log_signal.emit(hwnd, "DEBUG", f"等待验证图: {check_img}...")
             
             # 给 3 秒时间让界面跳转，先立即检测，失败再等待
-            for i in range(30): 
+            for i in range(10): 
                 if not self.running: return False
                 if i > 0:  # 第一次立即检测，后续等待
-                    time.sleep(0.1)
+                    time.sleep(0.05)
                 found, score, _ = self.engine.match_template(hwnd, img_path, threshold=0.75)
                 if found:
                     self.log_signal.emit(hwnd, "INFO", f"成功识别: {name} (匹配度:{score:.2f})")
@@ -143,7 +143,7 @@ class LobbyModule(QThread):
             if found:
                 self.log_signal.emit(hwnd, "INFO", f"确认大厅状态成功! (匹配度:{score:.2f})")
                 return True
-            time.sleep(0.2)  # 每200ms检测一次
+            time.sleep(0.1)  # 每100ms检测一次
             
         self.log_signal.emit(hwnd, "ERROR", "等待大厅超时，界面未跳转或加载中卡死")
         return False
@@ -153,7 +153,7 @@ class LobbyModule(QThread):
         if cfg.get('enabled') and len(self.hwnd_list) > 1:
             hwnds = [h for _, h, _ in self.hwnd_list]
             self.engine.cascade_windows(hwnds, 80, 40)
-            time.sleep(0.5)  # 等待窗口稳定
+            time.sleep(0.2)  # 等待窗口稳定
 
     def stop(self):
         self.running = False

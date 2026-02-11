@@ -53,3 +53,18 @@ coverage.xml
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Sensitive data files
+accounts.txt
+app/data/accounts.txt
+*.password
+*.secret
+
+# Generated data files
+app/data/room_session.json
+app/data/window_results.json
+app/data/switcher_state.json
+
+# Screenshots (may contain personal info)
+app/templates/screenshot_*.png
+app/templates/ScreenShot_*.png

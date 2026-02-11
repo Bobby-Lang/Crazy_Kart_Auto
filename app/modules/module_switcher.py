@@ -10,9 +10,8 @@ class ModeSwitcher:
         self.cfg = config_manager
         self.engine = engine
         
-        # 路径配置
-        paths = self.cfg.get_user_config('paths', {})
-        self.state_path = os.path.join(paths.get('data_dir', 'data'), "switcher_state.json")
+        # 路径配置 - 使用与 MainWindow 一致的 DATA_DIR
+        self.state_path = os.path.join(self.cfg.DATA_DIR, "switcher_state.json")
         
         # 加载并检查是否需要重置
         self.state = self._load_and_check_daily_reset()

@@ -103,7 +103,7 @@
         "description": "全局异常弹窗监控",
         "image_config": {
             "prefix": "emergency_",
-            "count": 7,
+            "count": 6,
             "extension": ".png"
         },
         "action_key": "space",
@@ -111,6 +111,24 @@
         "cooldown": 2.0
     },
     "//": "原有配置保持不变...",
+    "check_in_automation": {
+        "enabled": true,
+        "description": "每日签到自动化配置",
+        "images": {
+            "entry_icon": "check_in.png",
+            "page_flag": "check_point_03.png",
+            "end_flag": "lobby_feature.png"
+        },
+        "coords": {
+            "entry": [1500, 920],
+            "first_day": [400, 240]
+        },
+        "settings": {
+            "target_color_hex": "#4AF638",
+            "match_threshold": 0.75
+        }
+    },
+
     "task_automation": {
         "enabled": true,
         "//": "只有当所有模式对局任务完成后，才执行此模块",

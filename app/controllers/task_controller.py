@@ -46,7 +46,8 @@ class TaskController:
         self.stop_key = self._get_vk_code(self.cfg_mgr.get_config("stop_hotkey", "f10"))
         self.reset_key = self._get_vk_code(self.cfg_mgr.get_config("reset_hotkey", "f8"))
 
-        self._cleanup_session()
+        # 初始化时不重置任务进度，支持继续任务
+        self._cleanup_session(reset_progress=False)
         self._init_window_states()
         self._start_hotkey_listener()
         # 记录每局开始的时间，用于超时锁定保护（防止游戏崩溃后永久卡在 INGAME）
@@ -65,6 +66,31 @@ class TaskController:
         
         print(f"调度中心就绪 | 窗口总数: {len(self.windows)}")
 
+    def _load_session_file(self):
+        p = self.cfg_mgr.get_path("room_session")
+        if p and os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    if time.time() - d.get("timestamp", 0) < 600: return d
+            except: pass
+        return {}
+
+    def _refresh_session_timestamp(self):
+        """刷新 session 文件的时间戳，防止10分钟超时"""
+        try:
+            p = self.cfg_mgr.get_path("room_session")
+            if p and os.path.exists(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                # 只更新 timestamp，其他内容不变
+                d["timestamp"] = time.time()
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump(d, f, indent=4)
+        except Exception as e:
+            # 刷新失败不阻塞主流程
+            pass
+
     def _init_window_states(self):
         for idx, hwnd, acc in self.windows:
             self.win_states[hwnd] = {
@@ -80,9 +106,15 @@ class TaskController:
         if ks.startswith("f"): return getattr(win32con, f"VK_F{ks[1:]}")
         return win32con.VK_SPACE
 
-    def _cleanup_session(self):
-        """重置房间 Session 和任务进度"""
-        # 清理房间 session
+    def _cleanup_session(self, reset_progress=False):
+        """重置房间 Session，可选是否重置任务进度
+        
+        Args:
+            reset_progress: 是否重置任务进度（switcher_state.json）
+                             默认False，只清理房间session
+                             手动重置热键或日期变更时设为True
+        """
+        # 清理房间 session（总是清理，因为房间信息是临时的）
         p = self.cfg_mgr.get_path("room_session")
         if p and os.path.exists(p):
             try:
@@ -90,24 +122,33 @@ class TaskController:
                 print("已重置房间 Session 记录")
             except: pass
         
-        # 【新增】清理任务进度文件，支持手动重置任务
-        switcher_state_path = os.path.join(
-            os.path.dirname(p) if p else os.getcwd(),
-            "switcher_state.json"
-        )
-        if os.path.exists(switcher_state_path):
+        # 只有当明确要求时才重置任务进度
+        if reset_progress:
+            switcher_state_path = os.path.join(
+                os.path.dirname(p) if p else os.getcwd(),
+                "switcher_state.json"
+            )
+            if os.path.exists(switcher_state_path):
+                try:
+                    os.remove(switcher_state_path)
+                    print("已重置任务进度记录")
+                except: pass
+            
+            # 重新初始化 ModeSwitcher 状态
             try:
-                os.remove(switcher_state_path)
-                print("已重置任务进度记录")
-            except: pass
-        
-        # 【新增】重新初始化 ModeSwitcher 状态
-        try:
-            self.switcher.state = self.switcher._load_and_check_daily_reset()
-            self.switcher.refresh_config()
-            print("任务进度已重置，可重新开始任务")
-        except Exception as e:
-            print(f"重置进度时出错: {e}")
+                self.switcher.state = self.switcher._load_and_check_daily_reset()
+                self.switcher.refresh_config()
+                print("任务进度已重置，可重新开始任务")
+            except Exception as e:
+                print(f"重置进度时出错: {e}")
+        else:
+            # 不重置进度，只刷新配置确保数据最新
+            try:
+                self.switcher.refresh_config()
+                progress = self.switcher.state.get("daily_progress", {})
+                print(f"[继续任务] 当前进度 - 道具赛: {progress.get('mode_item', 0)}, 疾爽赛: {progress.get('mode_speed', 0)}")
+            except Exception as e:
+                print(f"刷新进度时出错: {e}")
 
     def _log(self, hwnd, msg, ctx=None):
         data = self.win_states[hwnd]
@@ -374,7 +415,7 @@ class TaskController:
             if found:
                 self._log(hwnd, f"诊断：匹配到 {skip_cfg['check_img']}，执行跳过动作", ctx)
                 self.engine.key_press(hwnd, win32con.VK_SPACE)
-                self.action_cd[hwnd] = time.time() + 1.0
+                self.action_cd[hwnd] = time.time() + 0.5
                 return
 
         # 2. 检查账号输入框
@@ -384,7 +425,7 @@ class TaskController:
             self._log(hwnd, "诊断：发现账号输入界面，开始录入...", ctx)
             self._execute_account_input(hwnd, data["account"])
             data["login_step_idx"] = 0
-            self.action_cd[hwnd] = time.time() + 2.0
+            self.action_cd[hwnd] = time.time() + 1.0
             return
 
         # 3. 登录步进序列 (login_sequence)
@@ -398,11 +439,11 @@ class TaskController:
                 self._log(hwnd, f"阶段：{step['name']} | 匹配成功({score:.2f})", ctx)
                 self.engine.click(hwnd, step["coord"][0], step["coord"][1])
                 data["login_step_idx"] += 1
-                self.action_cd[hwnd] = time.time() + 1.0
+                self.action_cd[hwnd] = time.time() + 0.5
             else:
                 # 盲按空格尝试唤醒可能被遮挡的画面
                 self.engine.key_press(hwnd, win32con.VK_SPACE)
-                self.action_cd[hwnd] = time.time() + 1.0
+                self.action_cd[hwnd] = time.time() + 0.5
 
     def _handle_room(self, hwnd, data, ctx):
         if ctx["all_done"]:
@@ -437,8 +478,9 @@ class TaskController:
                 enter_time = self.host_room_enter_time.get(hwnd, now)
                 self.host_room_enter_time[hwnd] = enter_time
                 if now - enter_time > 20.0:  # 20秒无成员加入，判定为异常房间
-                    self._log(hwnd, "房间异常：长时间无成员加入，重置并重新创房", ctx)
-                    self._cleanup_session()
+                    self._log(hwnd, "房间异常：长时间无成员加入，重置房间并重新创房", ctx)
+                    # 只重置房间session，保留任务进度
+                    self._cleanup_session(reset_progress=False)
                     self.host_room_enter_time.pop(hwnd, None)
                     self.action_cd[hwnd] = time.time() + 3.0
                     return
@@ -453,6 +495,11 @@ class TaskController:
                     self.save_room_session(rid, hwnd, mode_id)
                     if mode_id: self.switcher.sync_current_mode(mode_id)
                 return
+            
+            # 【修复】刷新 session 时间戳，防止10分钟超时
+            # 每次房主在房间且确认房间信息有效时，刷新timestamp
+            if ctx["sid"] and ctx.get("host_h"):
+                self._refresh_session_timestamp()
             # 2. 判断是否需要切换模型 (由 Switcher 内部状态决定)
             should_switch, target_cfg = self.switcher.check_switch_condition()
             
@@ -708,16 +755,6 @@ class TaskController:
             json.dump({"room_id": str(rid), "host_hwnd": int(hwnd), "mode": mode, "timestamp": time.time()}, f)
         self._log(hwnd, f"广播 Session: {rid}")
 
-    def _load_session_file(self):
-        p = self.cfg_mgr.get_path("room_session")
-        if p and os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    d = json.load(f)
-                    if time.time() - d.get("timestamp", 0) < 600: return d
-            except: pass
-        return {}
-
     def _start_hotkey_listener(self):
         def listener():
             last_p = False
@@ -738,7 +775,8 @@ class TaskController:
                 r_down = win32api.GetAsyncKeyState(self.reset_key) & 0x8000
                 if r_down and not last_r:
                     print("\n[系统] 重置任务进度...")
-                    self._cleanup_session()
+                    # 手动热键时重置任务进度
+                    self._cleanup_session(reset_progress=True)
                     # 重置所有窗口状态
                     for _, hwnd, _ in self.windows:
                         if hwnd in self.win_states:
