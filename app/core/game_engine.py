@@ -142,24 +142,24 @@ class GameEngine:
             for _ in range(2):
                 win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
                 win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-                time.sleep(0.05)
+                time.sleep(0.02)
 
-            time.sleep(0.4)
+            time.sleep(0.1)
 
             # Ctrl + A
             win32api.keybd_event(win32con.VK_CONTROL, 0, 0, 0)
-            time.sleep(0.1)
+            time.sleep(0.02)
             win32api.keybd_event(ord("A"), 0, 0, 0)
-            time.sleep(0.1)
+            time.sleep(0.02)
             win32api.keybd_event(ord("A"), 0, win32con.KEYEVENTF_KEYUP, 0)
             win32api.keybd_event(win32con.VK_CONTROL, 0, win32con.KEYEVENTF_KEYUP, 0)
-            time.sleep(0.2)
+            time.sleep(0.05)
 
             # Backspace
             win32api.keybd_event(win32con.VK_DELETE, 0, 0, 0)
-            time.sleep(0.1)
+            time.sleep(0.02)
             win32api.keybd_event(win32con.VK_DELETE, 0, win32con.KEYEVENTF_KEYUP, 0)
-            time.sleep(0.2)
+            time.sleep(0.05)
         except Exception as e:
             print(f"Clear Error: {e}")
 
@@ -168,7 +168,7 @@ class GameEngine:
         """输入流程"""
         GameEngine.clear_input(hwnd, x, y)
         GameEngine.click(hwnd, x, y)  # 补一点，确保焦点
-        time.sleep(0.2)
+        time.sleep(0.05)
         GameEngine.paste_text(hwnd, text)
 
     @staticmethod
@@ -226,13 +226,13 @@ class GameEngine:
 
             # 确保窗口处于前台再粘贴
             win32gui.SetForegroundWindow(hwnd)
-            time.sleep(0.1)
+            time.sleep(0.02)
 
             # 模拟按下 Ctrl+V
             win32api.keybd_event(win32con.VK_CONTROL, 0, 0, 0)
-            time.sleep(0.05)  # 必须有微小的停顿
+            time.sleep(0.02)
             win32api.keybd_event(ord("V"), 0, 0, 0)
-            time.sleep(0.05)
+            time.sleep(0.02)
             win32api.keybd_event(ord("V"), 0, win32con.KEYEVENTF_KEYUP, 0)
             win32api.keybd_event(win32con.VK_CONTROL, 0, win32con.KEYEVENTF_KEYUP, 0)
             return True

@@ -215,12 +215,14 @@ class TaskController:
         }
         
         # 【关键修复】动态识别房主：在房间状态下总是重新检测"开始"按钮
-        # 游戏结束后房主可能变化，需要实时识别
+        # 只在有房间相关状态时才检测房主
         detected_host = None
-        for _, hwnd, _ in self.windows:
-            if self.room_mod.has_start_button(hwnd):
-                detected_host = hwnd
-                break
+        has_room_state = any(self.win_states[hwnd]["state"] == WindowState.ROOM for _, hwnd, _ in self.windows)
+        if has_room_state:
+            for _, hwnd, _ in self.windows:
+                if self.room_mod.has_start_button(hwnd):
+                    detected_host = hwnd
+                    break
         
         # 如果检测到了新房主，更新上下文（只在真正变化时打印）
         if detected_host:
@@ -236,9 +238,20 @@ class TaskController:
             state_data = self.win_states[hwnd]
             prev_state = state_data["state"] # 记录上一次的状态，用于逻辑推导
 
-            # --- 步骤 1： 视觉事实检测 (依靠图片匹配) ---
-            is_room = self.room_mod.is_in_room(hwnd)
-            is_lobby = self.room_mod.is_in_lobby(hwnd)
+            # --- 步骤 1： 视觉事实检测 (依靠图片匹配)
+            # 优化：LOGIN状态只检测大厅不检测房间，UNKNOWN状态只检测大厅（减少截图开销）
+            if state_data["state"] == WindowState.LOGIN:
+                # LOGIN状态只检测大厅，不检测房间（避免截图开销）
+                is_room = False
+                is_lobby = self.room_mod.is_in_lobby(hwnd)
+            elif state_data["state"] == WindowState.UNKNOWN:
+                # UNKNOWN状态检测大厅，用于识别登录完成后进入大厅的情况
+                is_room = False
+                is_lobby = self.room_mod.is_in_lobby(hwnd)
+            else:
+                # 其他状态正常检测
+                is_room = self.room_mod.is_in_room(hwnd)
+                is_lobby = self.room_mod.is_in_lobby(hwnd)
 
             # --- 步骤 2： 状态机判定逻辑 ---
             
@@ -301,8 +314,9 @@ class TaskController:
                         state_data["state"] = WindowState.INGAME # 保持
 
                 # 情况 3：既不是开跑，也不在大厅房间 -> 尝试识别登录界面
+                # LOGIN/UNKNOWN状态都需要检测，避免卡死
                 else:
-                    if self._check_is_login_ui(hwnd): # 需要在下方定义这个辅助方法
+                    if self._check_is_login_ui(hwnd):
                         state_data["state"] = WindowState.LOGIN
                     else:
                         state_data["state"] = WindowState.UNKNOWN
@@ -342,7 +356,7 @@ class TaskController:
         data = self.win_states[hwnd]
         s = data["state"]
         
-        if ctx.get("all_done") :
+        if ctx.get("all_done"):
             if s== WindowState.FINISHED:
                 # 任务已完全结束，不再执行任何操作，只保持长冷却
                 self.action_cd[hwnd] = time.time() + 10.0
@@ -403,29 +417,39 @@ class TaskController:
             self._handle_login(hwnd, data, ctx)
         elif s == WindowState.CLAIMING:
             self._handle_claiming(hwnd, data, ctx)
+        elif s == WindowState.UNKNOWN:
+            # UNKNOWN 状态尝试识别当前界面
+            if self._check_is_login_ui(hwnd):
+                data["state"] = WindowState.LOGIN
+            else:
+                # 尝试检测房间或大厅
+                is_room = self.room_mod.is_in_room(hwnd)
+                is_lobby = self.room_mod.is_in_lobby(hwnd)
+                if is_room:
+                    data["state"] = WindowState.ROOM
+                elif is_lobby:
+                    data["state"] = WindowState.LOBBY
 
     def _handle_login(self, hwnd, data, ctx):
         """修复登录流程，添加诊断日志"""
         
         # 1. 检查大区/闪屏跳过
-        skip_cfg = self.cfg_mgr.get_config("pre_login.region_skip")
+        skip_cfg = self.cfg_mgr.get_config('pre_login.region_skip')
         if skip_cfg:
             img = self.cfg_mgr.get_template_path(skip_cfg["check_img"])
             found, _, _ = self.engine.match_template(hwnd, img, skip_cfg.get("match_threshold", 0.7))
             if found:
                 self._log(hwnd, f"诊断：匹配到 {skip_cfg['check_img']}，执行跳过动作", ctx)
                 self.engine.key_press(hwnd, win32con.VK_SPACE)
-                self.action_cd[hwnd] = time.time() + 0.5
                 return
 
         # 2. 检查账号输入框
-        input_cfg = self.cfg_mgr.get_config("pre_login.account_input")
+        input_cfg = self.cfg_mgr.get_config('pre_login.account_input')
         idx_img = self.cfg_mgr.get_template_path(input_cfg["check_img"])
         if self.engine.match_template(hwnd, idx_img, 0.75)[0]:
             self._log(hwnd, "诊断：发现账号输入界面，开始录入...", ctx)
             self._execute_account_input(hwnd, data["account"])
             data["login_step_idx"] = 0
-            self.action_cd[hwnd] = time.time() + 1.0
             return
 
         # 3. 登录步进序列 (login_sequence)
@@ -439,11 +463,34 @@ class TaskController:
                 self._log(hwnd, f"阶段：{step['name']} | 匹配成功({score:.2f})", ctx)
                 self.engine.click(hwnd, step["coord"][0], step["coord"][1])
                 data["login_step_idx"] += 1
-                self.action_cd[hwnd] = time.time() + 0.5
             else:
                 # 盲按空格尝试唤醒可能被遮挡的画面
                 self.engine.key_press(hwnd, win32con.VK_SPACE)
-                self.action_cd[hwnd] = time.time() + 0.5
+                return
+
+        # 2. 检查账号输入框
+        input_cfg = self.cfg_mgr.get_config("pre_login.account_input")
+        idx_img = self.cfg_mgr.get_template_path(input_cfg["check_img"])
+        if self.engine.match_template(hwnd, idx_img, 0.75)[0]:
+            self._log(hwnd, "诊断：发现账号输入界面，开始录入...", ctx)
+            self._execute_account_input(hwnd, data["account"])
+            data["login_step_idx"] = 0
+            return
+
+        # 3. 登录步进序列 (login_sequence)
+        seq = self.cfg_mgr.get_config("login_sequence", [])
+        if data["login_step_idx"] < len(seq):
+            step = seq[data["login_step_idx"]]
+            img_path = self.cfg_mgr.get_template_path(step["check_img"])
+            found, score, _ = self.engine.match_template(hwnd, img_path, step.get("match_threshold", 0.7))
+            
+            if found:
+                self._log(hwnd, f"阶段：{step['name']} | 匹配成功({score:.2f})", ctx)
+                self.engine.click(hwnd, step["coord"][0], step["coord"][1])
+                data["login_step_idx"] += 1
+            else:
+                # 盲按空格尝试唤醒可能被遮挡的画面
+                self.engine.key_press(hwnd, win32con.VK_SPACE)
 
     def _handle_room(self, hwnd, data, ctx):
         if ctx["all_done"]:
@@ -699,7 +746,7 @@ class TaskController:
         c = self.cfg_mgr.get_config("input_coords")
         u, p = acc.get("username") or acc.get("user"), acc.get("password") or acc.get("pass")
         self.engine.type_text(hwnd, c["acc_input"][0], c["acc_input"][1], u)
-        time.sleep(0.5)
+        time.sleep(0.1)
         self.engine.type_text(hwnd, c["pwd_input"][0], c["pwd_input"][1], p)
         self.engine.key_press(hwnd, win32con.VK_RETURN)
 
